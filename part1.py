@@ -5,6 +5,7 @@ import requests
 import xlsxwriter
 import math
 import os
+from tqdm import tqdm
 # %% import stock list
 stocks = pd.read_csv('data/sp_500_stocks.csv')
 
@@ -40,8 +41,7 @@ stocks = stocks.iloc[:4, ].apply(lambda x: get_data(x.Ticker), axis=1)
 def get_data_batch(syms, endpoints=['marketCap', 'latestPrice'], lim=100):
     dat = None
 
-    for i in range(0, len(syms), lim):
-        print(i)
+    for i in tqdm(range(0, len(syms), lim)):
         symbols = ','.join(syms[i:(i+lim)])
         req = f'{base_url}/stock/market/batch?symbols={symbols}&types=quote&{auth}'
         resp = requests.get(req).json()
@@ -54,10 +54,46 @@ def get_data_batch(syms, endpoints=['marketCap', 'latestPrice'], lim=100):
     return dat
 
 
-stocks = get_data_batch(stocks.Ticker)
+dat = get_data_batch(stocks.Ticker)
 # %%
-stocks = stocks.reset_index()
-stocks.columns = ['Ticker', 'Market Capitalisation', 'Stock Price']
-stocks['Number of Shares to Buy'] = pd.NA
+dat = dat.reset_index()
+dat.columns = ['Ticker', 'Market Capitalisation', 'Stock Price']
+dat['Number of Shares to Buy'] = pd.NA
+
+# %%
+# NOTE: We implement an approach to use as much as possible from the available assests by not simply rounding down
+# like in the tutorial but sequentially buy shares and recompute the remaining amount available
+
+assets = 1e7
+N = len(dat)
+
+
+def get_n_shares(price, assets, N):
+    invest = assets / N
+    n_shares = np.round(invest / price)
+
+    assets -= n_shares * price
+    N -= 1
+
+    return int(n_shares)
+
+
+dat['n_shares'] = dat.apply(lambda x: get_n_shares(
+    x['Stock Price'], assets, N), axis=1)
+
+# %% approach in tutorial
+assets = 1e7
+N = len(dat)
+val = assets / N
+
+dat['Number of Shares to Buy'] = dat.apply(
+    lambda x: int(val / x['Stock Price']), axis=1)
+
+# %%
+print('Spent tutorial approach:')
+print(dat.apply(lambda x: x['Stock Price'] *
+      x['Number of Shares to Buy'], axis=1).sum())
+print('Spent own approach:')
+print(dat.apply(lambda x: x['Stock Price'] * x['n_shares'], axis=1).sum())
 
 # %%
