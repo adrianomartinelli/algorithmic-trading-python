@@ -1,9 +1,16 @@
+"""
+We do not follow the approach in the tutorial of using the One-Year-Return for the momentum.
+Rather we use a weighted average of the daily returns, weighted with weight decay.
+"""
+
 # %% imports
+import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import requests
 from scipy import stats
 from tqdm import tqdm
+
 # %% load stocks
 stocks = pd.read_csv('data/sp_500_stocks.csv')
 
@@ -19,7 +26,7 @@ endpoint = f'/stock/{symbol}/chart/{rng}'
 
 req = f'{base_url}/{endpoint}?{auth}'
 # %% example request
-requests.get(req).json()
+resp = requests.get(req).json()
 
 # %% batch request
 syms = ','.join(stocks.Ticker[:2].values)
@@ -33,7 +40,7 @@ req = f'{base_url}/{endpoint}&{auth}'
 # NOTE: we need to request the data in chunks since API is limited to 100 symbols
 
 
-def get_data_batch(syms, time_range='5d', lim=100):
+def get_data_batch(syms, time_range='3m', lim=100):
     IEX_CLOUD_API_TOKEN = os.environ['IEX_CLOUD_API_TOKEN']
     base_url = 'https://sandbox.iexapis.com/stable'
     auth = f'token={IEX_CLOUD_API_TOKEN}'
@@ -55,9 +62,10 @@ def get_data_batch(syms, time_range='5d', lim=100):
     return dat
 
 
-dat = get_data_batch(stocks.Ticker)
+resp = get_data_batch(stocks.Ticker)
 
 # %% augment & tidy data
+dat = resp.copy()
 print(dat.info())
 
 # drop column 0, introduced by empty response for certain stocks
@@ -72,13 +80,55 @@ dat = dat.dropna(0)
 dat.date = pd.to_datetime(dat.date)
 
 # sort such that the most current date is first
-dat.sort_values(['symbol', 'date'], ascending=[True, False])
+dat = dat.sort_values(['symbol', 'date'], ascending=[True, False])
 
 # compute time deltas
-dat['delta_t'] = dat.groupby(['symbol']).date.diff()
-dat.delta_t = dat.delta_t.fillna(pd.Timedelta(0, unit="d"))
-# %%
-dat[['date', 'open', 'close', 'changePercent', 'change']]
+dat['delta_t'] = dat.groupby(['symbol']).date.transform(
+    lambda x: np.abs(x - x.max()))
+# dat.delta_t = dat.delta_t.fillna(pd.Timedelta(0, unit="d"))
 
+# compute daily returns
+# NOTE: for now we use the difference between opening and closing
+dat['return'] = dat.apply(lambda x: (x.close - x.open)/x.open, axis=1)
+# dat[['date', 'open', 'close', 'changePercent', 'change']]
+
+# %% compute weighted average return
+
+# NOTE: use exponential weight decay over time to weight current return more than past
+
+
+def weighted_average(x, decay_fct=10):
+    weights = 1 / np.exp(np.arange(len(x))/10)
+    return np.average(x, weights=weights)
+
+
+res = dat.groupby('symbol')['return'].agg(weighted_average)
+res = res.sort_values(ascending=False)
+
+# %% plot high/low momentum stocks
+# NOTE: We observe that the high momentum stocks actually have a lower return over the
+# observed period of time. However, as expected the high momentum stocks
+top_n = 5
+
+fig, axes = plt.subplots(2, 1, sharex=True)
+
+for sym in res.index[:top_n]:
+    plot_dat = dat[dat.index == sym].sort_values('date')
+    y = plot_dat.close / plot_dat.open[0]  # normalise to 1
+    axes[0].plot(plot_dat.date, y, markersize=5, marker='o', label=sym)
+
+for sym in res.index[-top_n:]:
+    plot_dat = dat[dat.index == sym].sort_values('date')
+    y = plot_dat.close / plot_dat.open[0]  # normalise to 1
+    axes[1].plot(plot_dat.date, y, markersize=5, marker='o', label=sym)
+
+for ax, title in zip(axes, ['high', 'low']):
+    ax.set_title(f'{title} momentum')
+    ax.legend(loc='upper left')
+
+fig.tight_layout()
+fig.show()
+
+# %%
 
 # %%
