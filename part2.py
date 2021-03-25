@@ -4,6 +4,7 @@ Rather we use a weighted average of the daily returns, weighted with weight deca
 """
 
 # %% imports
+from matplotlib import cm
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
@@ -182,6 +183,47 @@ for ax, title in zip(axes[0, :], ['high', 'low']):
     ax.set_title(f'{title} momentum')
 
 fig.tight_layout()
+fig.show()
+
+
+# %% plot all stocks time series
+res = dat.sort_values('date', ascending=True).groupby(
+    'symbol').apply(lambda x: (x.close[-1] - x.open[0])/x.open[0])
+res.sort_values(ascending=False, inplace=True)
+res
+# %%
+fig, ax = plt.subplots()
+
+n_top = 5
+
+# rest
+for sym in res.iloc[n_top:-n_top].index:
+    plot_dat = dat[dat.index == sym].sort_values('date')
+    y = plot_dat.close / plot_dat.open[0]  # normalise to 1
+    ax.plot(plot_dat.date, y, markersize=0, marker='o',
+            linewidth=1, color=(0, 0, 0, .1))
+
+# top
+for i, sym in enumerate(res.iloc[:n_top].index):
+    plot_dat = dat[dat.index == sym].sort_values('date')
+    y = plot_dat.close / plot_dat.open[0]  # normalise to 1
+
+    intensity = (.5 - .5/n_top * i) + .5
+    ax.plot(plot_dat.date, y, markersize=2, marker='o',
+            label=sym, linewidth=1, color=cm.Greens(intensity))
+
+
+# flop
+for i, sym in enumerate(res.iloc[-n_top:].index):
+    plot_dat = dat[dat.index == sym].sort_values('date')
+    y = plot_dat.close / plot_dat.open[0]  # normalise to 1
+
+    intensity = .5/n_top * i + .5
+    ax.plot(plot_dat.date, y, markersize=2, marker='o',
+            label=sym, linewidth=1, color=cm.Reds(intensity))
+ax.legend(loc='upper left')
+ax.tick_params(rotation=-20)
+
 fig.show()
 
 
