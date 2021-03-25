@@ -102,22 +102,24 @@ def weighted_average(x, decay_fct=10):
     return np.average(x, weights=weights)
 
 
-res = dat.groupby('symbol')['return'].agg(weighted_average)
-res = res.sort_values(ascending=False)
+momentum = dat.groupby('symbol')['return'].agg(
+    weighted_average).rename('momentum')
+momentum = momentum.sort_values(ascending=False)
 
 # %% plot high/low momentum stocks
 # NOTE: We observe that the high momentum stocks actually have a lower return over the
-# observed period of time. However, as expected the high momentum stocks
+# observed period of time. However, as expected the high momentum stocks recently show
+# high returns and the low momentum negative returns.
 top_n = 5
 
 fig, axes = plt.subplots(2, 1, sharex=True)
 
-for sym in res.index[:top_n]:
+for sym in momentum.index[:top_n]:
     plot_dat = dat[dat.index == sym].sort_values('date')
     y = plot_dat.close / plot_dat.open[0]  # normalise to 1
     axes[0].plot(plot_dat.date, y, markersize=5, marker='o', label=sym)
 
-for sym in res.index[-top_n:]:
+for sym in momentum.index[-top_n:]:
     plot_dat = dat[dat.index == sym].sort_values('date')
     y = plot_dat.close / plot_dat.open[0]  # normalise to 1
     axes[1].plot(plot_dat.date, y, markersize=5, marker='o', label=sym)
@@ -129,6 +131,58 @@ for ax, title in zip(axes, ['high', 'low']):
 fig.tight_layout()
 fig.show()
 
+# %% refine strategy
+# As a simple refinement of the strategy we including mean return over 3 months
+
+mean_3m_return = dat.groupby('symbol')['return'].agg(
+    'mean').rename('mean_3m_return')
+mean_3m_return.sort_values(ascending=False, inplace=True)
+
+# %% compute score
+# NOTE: compute a score as a linear combination of mean_3_month return and momentum
+strat = pd.concat((momentum, mean_3m_return), axis=1)
+
+weights = np.array([.3, .7])
+strat['score'] = strat.apply(lambda x: np.average(
+    x, weights=weights), axis=1, raw=True)
+strat.sort_values('score', ascending=False, inplace=True)
+strat
 # %%
+strat = pd.concat((momentum, mean_3m_return), axis=1)
+top_n = 5
+weights = [(1, 0), (.25, .75), (.5, .5), (.75, .25), (0, 1)]
+fig, axes = plt.subplots(len(weights), 2, sharex=True,
+                         figsize=(8, 2*len(weights)))
+
+for cur_weight, cur_axes in zip(weights, axes):
+    # compute score with current weights
+    strat['score'] = strat.apply(lambda x: np.average(
+        x, weights=cur_weight), axis=1, raw=True)
+    strat.sort_values('score', ascending=False, inplace=True)
+
+    syms = strat.index[:top_n]
+    for sym in syms:
+        plot_dat = dat[dat.index == sym].sort_values('date')
+        y = plot_dat.close / plot_dat.open[0]  # normalise to 1
+        cur_axes[0].plot(plot_dat.date, y, markersize=5, marker='o', label=sym)
+        cur_axes[0].legend(loc='upper left')
+
+    syms = strat.index[-top_n:]
+    for sym in syms:
+        plot_dat = dat[dat.index == sym].sort_values('date')
+        y = plot_dat.close / plot_dat.open[0]  # normalise to 1
+        cur_axes[1].plot(plot_dat.date, y, markersize=5, marker='o', label=sym)
+        cur_axes[1].legend(loc='upper left')
+
+    cur_axes[0].set_ylabel(f'weights: {cur_weight}')
+    strat.drop('score', 1, inplace=True)
+
+
+for ax, title in zip(axes[0, :], ['high', 'low']):
+    ax.set_title(f'{title} momentum')
+
+fig.tight_layout()
+fig.show()
+
 
 # %%
