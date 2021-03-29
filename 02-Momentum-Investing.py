@@ -182,6 +182,8 @@ for cur_weight, cur_axes in zip(weights, axes):
 for ax, title in zip(axes[0, :], ['high', 'low']):
     ax.set_title(f'{title} momentum')
 
+for ax in axes[4, :]:
+    ax.tick_params(rotation=-20)
 fig.tight_layout()
 fig.show()
 
@@ -192,7 +194,7 @@ res = dat.sort_values('date', ascending=True).groupby(
 res.sort_values(ascending=False, inplace=True)
 res
 # %%
-fig, ax = plt.subplots()
+fig, ax = plt.subplots(figsize=(8, 4))
 
 n_top = 5
 
