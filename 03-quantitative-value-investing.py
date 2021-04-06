@@ -1,4 +1,5 @@
 # %% imports
+from scipy.stats import percentileofscore
 import numpy as np
 import pandas as pd
 import requests
@@ -60,20 +61,30 @@ print(dat.isna().sum())
 # dat = dat.fillna(means)
 
 dat = dat.apply(lambda x: x.fillna(x.mean()))
+dat = dat.iloc[:, [0, *list(range(2, dat.shape[1]))]]  # drop correct peRatio
+
+# %% compute percentiles
+
+cols = ['peRatio', 'priceToBook', 'priceToSales', 'EValue/EBITDA', 'EValue/GP']
+
+for col in cols:
+    def score(x): return percentileofscore(dat[col], x[col])
+    dat[f'{col}_percentil'] = dat.apply(score, 1)
+
+# %% compute rank
+for col in cols:
+    dat[f'{col}_rank'] = dat[col].rank(ascending=False)
+
+# %% compute Robust Value (RV) score
+
+percentil_cols = [f'{col}_percentil' for col in cols]
+dat['percentil_RV'] = dat.apply(lambda x: x[percentil_cols].mean(), axis=1)
+
+rank_cols = [f'{col}_rank' for col in cols]
+dat['rank_RV'] = dat.apply(lambda x: x[rank_cols].mean(), axis=1)
 
 # %%
-
-cols = ['latestPrice', 'peRatio', 'PE Percentile', 'priceToBook', 'PB Percentile',
-        'priceToSales', 'PS Percentile', 'EBITDA', 'enterpriseValue', 'grossProfit',
-        'EValue/EBITDA', 'EValue/GP']
-
-dat['PE Percentile'] = pd.NA
-dat['PB Percentile'] = pd.NA
-dat['PS Percentile'] = pd.NA
-dat['EValue/EBITDA'] = pd.NA
-dat['EValue/GP'] = pd.NA
-
-dat = dat[cols]
-
+dat.sort_values('percentil_RV', ascending=False, inplace=True)
+dat
 # %%
 # NOTE: rest of the tutorial very repetitive.
